@@ -1,0 +1,80 @@
+---
+title: "Machine Learning Project"
+---
+
+##Objective
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement -- a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data preprocessing
+We load the data as provided by the assignment.
+```{r}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+##Data cleaning
+First, we divide the training data into "training" and "validation" datasets. We will use the first variable (contains 80% of data) to train our model, and use the second variable (contains the remaining 20%) for cross-validation. We also filtered the incomplete columns that has over 50% missing values, as well as columns that are near the zero variance.
+
+```{r}
+library(caret)
+library(randomForest)
+trainingdata <- createDataPartition(training$classe, p = 0.8, list = FALSE)
+training_training <- training[trainingdata, ]
+training_validation <- training[-trainingdata, ]
+nzv <- nearZeroVar(training_training)
+training_training <- training_training[-nzv]
+training_validation <- training_validation[-nzv]
+testing <- testing[-nzv]
+completeentries <- sapply(training_training, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+incompletecolumn <- names(completeentries[completeentries < 0.5 * length(training_training$classe)])
+todeletecolumn <- c("X", "user_name", "raw_timestamp_part_1",
+"raw_timestamp_part_2",
+    "cvtd_timestamp", "new_window", "num_window")
+training_training <- training_training[, !names(training_training) %in% c(incompletecolumn, todeletecolumn)]
+training_validation <- training_validation[, !names(training_validation) %in% c(incompletecolumn, todeletecolumn)]
+testing <- testing[, !names(testing) %in% c(incompletecolumn, todeletecolumn)]
+dim(training_training)
+dim(training_validation)
+dim(testing)
+```
+
+After data cleaning, the number of rows for training data is `r nrow(training_training)`, and for testing data is `r nrow(training_validation)`. We have also reduced the number of columns used to prediction from `r dim(training)[2]` to `r dim(training_training)[2]`.
+
+##Models
+
+After a few trials, it seems random forests would be the best choice to construct the model using training data.
+```{r}
+model <- randomForest(classe~.,data=training_training)
+```
+
+##Validation
+
+Using the obtained best model fits, we applied them to validation dataset to test the sensitivity, specificity, and out-of-sample error.
+
+```{r}
+validation <- predict(model, training_validation)
+confusionMatrix(validation, training_validation$classe)
+```
+
+It looks like the trained model achieved >=99% sensitivity and specificity for the validation data, and the out-of-sample error was about 0.5%, so the trained model performs very well.
+
+##Prediction
+
+We therefore predict the required 20 test cases and write to the format as instructed.
+
+```{r}
+prediction_testing <- predict(model, testing)
+prediction_testing
+prediction_testing <- as.vector(prediction_testing)
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(prediction_testing)
+```
+
